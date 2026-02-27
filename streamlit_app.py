@@ -26,9 +26,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- MOCK DATABASE INIT ---
-# This creates a persistent "database" for the duration of the user's session
 if 'search_history' not in st.session_state:
-    # Seed data to make the dashboard look populated for presentations
     categories = ["Admin Burden", "Clinical Readiness", "Staffing/Morale", "Supply Chain", "Patient Care"]
     seed_data = []
     for _ in range(25):
@@ -40,20 +38,15 @@ if 'search_history' not in st.session_state:
 # --- HELPER FUNCTIONS ---
 
 def categorize_query(query):
-    """Simple clustering algorithm based on keywords"""
     q = query.lower()
-    if any(word in q for word in ["ehr", "mhs genesis", "click", "admin", "training"]):
-        return "Admin Burden"
-    elif any(word in q for word in ["readiness", "deploy", "austere", "trauma"]):
-        return "Clinical Readiness"
-    elif any(word in q for word in ["burnout", "tired", "turnover", "pay", "manning"]):
-        return "Staffing/Morale"
-    elif any(word in q for word in ["supply", "equipment", "shortage"]):
-        return "Supply Chain"
-    else:
-        return "Patient Care"
+    if any(word in q for word in ["ehr", "mhs genesis", "click", "admin", "training"]): return "Admin Burden"
+    elif any(word in q for word in ["readiness", "deploy", "austere", "trauma"]): return "Clinical Readiness"
+    elif any(word in q for word in ["burnout", "tired", "turnover", "pay", "manning"]): return "Staffing/Morale"
+    elif any(word in q for word in ["supply", "equipment", "shortage"]): return "Supply Chain"
+    else: return "Patient Care"
 
 def expand_query(user_query):
+    """Creates the complex boolean string strictly for PubMed"""
     optimized = f"({user_query}) AND (military OR defense OR veteran OR army OR navy OR air force)"
     lower_q = user_query.lower()
     if "burnout" in lower_q or "tired" in lower_q:
@@ -62,9 +55,17 @@ def expand_query(user_query):
         optimized = f"({user_query} OR \"advanced practice\" OR competency OR deployment) AND (military OR defense)"
     return optimized
 
-def search_federal_grants(expanded_query, max_results=5):
+def search_federal_grants(raw_query, max_results=5):
+    """Sends a clean, simple string to NIH to prevent it from getting confused"""
     url = "https://api.reporter.nih.gov/v2/projects/search"
-    payload = {"criteria": {"advanced_text_search": {"operator": "and", "search_text": expanded_query}}, "offset": 0, "limit": max_results}
+    # Keep it simple: just the user's words + "military"
+    clean_query = f"{raw_query} military"
+    
+    payload = {
+        "criteria": {"advanced_text_search": {"operator": "and", "search_text": clean_query}}, 
+        "offset": 0, 
+        "limit": max_results
+    }
     try:
         res = requests.post(url, json=payload, headers={'Content-Type': 'application/json'}).json()
         results = []
@@ -104,7 +105,6 @@ def search_pubmed(expanded_query, max_results=5):
 st.markdown('<div class="dashboard-header">Innovation & Research Search Portal</div>', unsafe_allow_html=True)
 st.markdown('<div class="dashboard-sub">Bridging the gap between front-line feedback and active medical research.</div>', unsafe_allow_html=True)
 
-# Metrics dynamically updated based on database
 total_searches = len(st.session_state.search_history)
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -128,15 +128,12 @@ with tab1:
         search_btn = st.button("Submit & Analyze", type="primary", use_container_width=True)
     
     if search_btn and user_query:
-        # TRACKING LOGIC: Add query to our database
         category = categorize_query(user_query)
         new_entry = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d %H:%M"), "User_Query": user_query, "Category": category}])
         st.session_state.search_history = pd.concat([new_entry, st.session_state.search_history], ignore_index=True)
         
-        # UI Feedback
         st.success(f"Insight successfully logged and categorized as: **{category}**")
         
-        # SEARCH LOGIC
         expanded_query = expand_query(user_query)
         st.markdown(f"""
         <div class="expander-box">
@@ -146,7 +143,8 @@ with tab1:
         """, unsafe_allow_html=True)
         
         with st.spinner("Querying Federal Grants and PubMed..."):
-            grants = search_federal_grants(expanded_query, max_results=3)
+            # Notice here we pass the RAW user_query to grants, and the EXPANDED query to pubmed
+            grants = search_federal_grants(user_query, max_results=3)
             literature = search_pubmed(expanded_query, max_results=5)
             
             if grants or literature:
@@ -166,7 +164,6 @@ with tab2:
     st.markdown("### Front-Line Insight Trends")
     st.markdown("This dashboard clusters incoming searches and feedback to identify systemic issues across the force.")
     
-    # Generate Chart Data
     df = st.session_state.search_history
     category_counts = df['Category'].value_counts()
     
@@ -182,7 +179,6 @@ with tab2:
             st.markdown(f"**{index}:** {value} reports")
             
     st.markdown("##### Live Tracking Log")
-    # Display the dataframe (hiding the index for a cleaner look)
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 # --- TAB 3: SUBMISSION ---
