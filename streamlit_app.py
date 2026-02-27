@@ -56,13 +56,11 @@ def expand_query(user_query):
     return optimized
 
 def search_federal_grants(raw_query, max_results=5):
-    """Sends a clean, simple string to NIH to prevent it from getting confused"""
+    """Sends ONLY the exact user keywords so it doesn't get hijacked by broad terms"""
     url = "https://api.reporter.nih.gov/v2/projects/search"
-    # Keep it simple: just the user's words + "military"
-    clean_query = f"{raw_query} military"
     
     payload = {
-        "criteria": {"advanced_text_search": {"operator": "and", "search_text": clean_query}}, 
+        "criteria": {"advanced_text_search": {"operator": "and", "search_text": raw_query}}, 
         "offset": 0, 
         "limit": max_results
     }
@@ -143,7 +141,7 @@ with tab1:
         """, unsafe_allow_html=True)
         
         with st.spinner("Querying Federal Grants and PubMed..."):
-            # Notice here we pass the RAW user_query to grants, and the EXPANDED query to pubmed
+            # Passing only the raw user_query to the grants API now
             grants = search_federal_grants(user_query, max_results=3)
             literature = search_pubmed(expanded_query, max_results=5)
             
